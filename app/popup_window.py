@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -25,19 +25,22 @@ class InfoCard(QFrame):
 
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
-        body_label = QLabel(body or "—")
-        body_label.setWordWrap(True)
-        body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self.body_label = QLabel(body or "—")
+        self.body_label.setWordWrap(True)
+        self.body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         layout.addWidget(title_label)
-        layout.addWidget(body_label)
+        layout.addWidget(self.body_label)
 
 
 class PopupWindow(QDialog):
+    show_result_signal = Signal(object, object)
+
     def __init__(self, width: int = 430, height: int = 360, always_on_top: bool = True) -> None:
         super().__init__()
         self.setWindowTitle("StudyFlash AI")
-        flags = Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint
+        flags = Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint
         if always_on_top:
             flags |= Qt.WindowStaysOnTopHint
         self.setWindowFlags(flags)
@@ -45,6 +48,7 @@ class PopupWindow(QDialog):
         self.resize(width, height)
         self._build_ui()
         self._apply_style()
+        self.show_result_signal.connect(self._show_result_on_ui_thread)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -60,7 +64,7 @@ class PopupWindow(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch(1)
         self.accept_button = QPushButton("Aceptar")
-        self.accept_button.clicked.connect(self.accept)
+        self.accept_button.clicked.connect(self.close)
         button_row.addWidget(self.accept_button)
 
         layout.addWidget(self.question_card)
@@ -105,7 +109,13 @@ class PopupWindow(QDialog):
         )
 
     def show_result(self, parsed_question: ParsedQuestion, answer_result: AnswerResult) -> None:
-        self._set_card_text(self.question_card, parsed_question.question or "No se detectó una pregunta clara.")
+        self.show_result_signal.emit(parsed_question, answer_result)
+
+    def _show_result_on_ui_thread(self, parsed_question: ParsedQuestion, answer_result: AnswerResult) -> None:
+        self._set_card_text(
+            self.question_card,
+            parsed_question.question or "No se detectó una pregunta clara."
+        )
         self._set_card_text(self.answer_card, answer_result.answer)
         self._set_card_text(self.explanation_card, answer_result.explanation)
         self.confidence_label.setText(
@@ -116,5 +126,4 @@ class PopupWindow(QDialog):
         self.activateWindow()
 
     def _set_card_text(self, card: InfoCard, value: str) -> None:
-        label = card.layout().itemAt(1).widget()
-        label.setText(value)
+        card.body_label.setText(value or "—")
