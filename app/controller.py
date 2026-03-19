@@ -50,35 +50,75 @@ class StudyFlashController:
         self.notifier("StudyFlash AI", "Configuración guardada correctamente.")
 
     def process_capture(self) -> tuple[ParsedQuestion, object]:
-        logger.info("Starting capture workflow")
-        if self.config.debug_mode and self.config.debug_image_path:
-            capture = self.screen_capture.load_debug_image(self.config.debug_image_path)
-        else:
-            capture = self.screen_capture.capture(
-                mode=self.config.capture.mode,
-                region=self.config.capture.region,
-                monitor_index=self.config.capture.monitor_index,
+        try:
+            logger.info("Starting capture workflow")
+
+            if self.config.debug_mode and self.config.debug_image_path:
+                logger.info("Loading debug image: %s", self.config.debug_image_path)
+                capture = self.screen_capture.load_debug_image(self.config.debug_image_path)
+            else:
+                logger.info(
+                    "Capturing screen | mode=%s | region=%s | monitor=%s",
+                    self.config.capture.mode,
+                    self.config.capture.region,
+                    self.config.capture.monitor_index,
+                )
+                capture = self.screen_capture.capture(
+                    mode=self.config.capture.mode,
+                    region=self.config.capture.region,
+                    monitor_index=self.config.capture.monitor_index,
+                )
+
+            logger.info("Capture completed")
+
+            ocr_result = self.ocr_engine.extract_text(capture.image)
+            logger.info("OCR completed | raw_text_len=%s", len(ocr_result.raw_text or ""))
+            logger.info("OCR preview: %r", (ocr_result.raw_text or "")[:300])
+
+            parsed = self.parser.parse(ocr_result.raw_text)
+            logger.info(
+                "Parse completed | detected=%s | type=%s | question=%r",
+                parsed.detected,
+                parsed.question_type,
+                parsed.question[:200] if parsed.question else "",
             )
-        ocr_result = self.ocr_engine.extract_text(capture.image)
-        parsed = self.parser.parse(ocr_result.raw_text)
-        if not parsed.detected:
-            parsed = ParsedQuestion(
-                question=ocr_result.text or "No se detectó texto utilizable en la captura.",
-                options=[],
-                question_type="unknown",
-                detected=False,
-                source_text=ocr_result.raw_text,
+
+            if not parsed.detected:
+                parsed = ParsedQuestion(
+                    question=ocr_result.text or "No se detectó texto utilizable en la captura.",
+                    options=[],
+                    question_type="unknown",
+                    detected=False,
+                    source_text=ocr_result.raw_text,
+                )
+                logger.info("Fallback ParsedQuestion created")
+
+            answer = self.answer_engine.answer(parsed, self.config.response_mode)
+            logger.info(
+                "Answer generated | type=%s | confidence=%.2f | answer=%r",
+                answer.question_type,
+                answer.confidence,
+                answer.answer[:200] if answer.answer else "",
             )
-        answer = self.answer_engine.answer(parsed, self.config.response_mode)
-        self.history_store.add_entry(
-            question=parsed.question,
-            answer=answer.answer,
-            explanation=answer.explanation,
-            confidence=answer.confidence,
-            question_type=answer.question_type,
-        )
-        self.popup_window.show_result(parsed, answer)
-        return parsed, answer
+
+            self.history_store.add_entry(
+                question=parsed.question,
+                answer=answer.answer,
+                explanation=answer.explanation,
+                confidence=answer.confidence,
+                question_type=answer.question_type,
+            )
+            logger.info("History entry stored")
+
+            self.popup_window.show_result(parsed, answer)
+            logger.info("Popup displayed")
+
+            return parsed, answer
+
+        except Exception as exc:
+            logger.exception("Capture workflow failed")
+            self.notifier("StudyFlash AI", f"No se pudo procesar la captura: {exc}")
+            raise
 
     def run_ocr_test(self) -> tuple[ParsedQuestion, object]:
         return self.process_capture()
