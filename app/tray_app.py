@@ -4,7 +4,7 @@ import logging
 
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QStyle
 
 from app.config import ConfigStore
 from app.controller import StudyFlashController
@@ -53,7 +53,7 @@ class StudyFlashTrayApp(QObject):
     def _load_icon(self) -> QIcon:
         icon = QIcon(resource_path("assets", "icon.png"))
         if icon.isNull():
-            icon = self.qt_app.style().standardIcon(self.qt_app.style().SP_ComputerIcon)
+            icon = self.qt_app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         return icon
 
     def _build_menu(self) -> None:
