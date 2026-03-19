@@ -8,6 +8,8 @@ __all__ = [
     "ocr_engine",
     "question_parser",
     "answer_engine",
+    "llm_client",
+    "prompt_templates",
     "popup_window",
     "tray_app",
     "settings_window",

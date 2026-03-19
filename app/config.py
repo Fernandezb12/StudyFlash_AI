@@ -5,13 +5,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.utils import APP_NAME, get_default_data_dir
+from app.utils import APP_NAME, clamp, get_default_data_dir
 
 
 @dataclass(slots=True)
 class CaptureSettings:
-    mode: str = "full_screen"
-    region: list[int] = field(default_factory=lambda: [0, 0, 1280, 720])
+    mode: str = "region"
+    region: list[int] = field(default_factory=lambda: [140, 140, 1280, 760])
     monitor_index: int = 1
 
 
@@ -25,13 +25,22 @@ class AppConfig:
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     ocr_language: str = "spa+eng"
     tesseract_cmd: str = ""
-    popup_width: int = 430
-    popup_height: int = 360
+    tesseract_psm: int = 6
+    popup_width: int = 350
+    popup_height: int = 170
     always_on_top: bool = True
     history_limit: int = 20
     debug_mode: bool = False
     debug_image_path: str = ""
     theme: str = "system"
+    openai_enabled: bool = True
+    openai_model: str = "gpt-4o-mini"
+    openai_api_key_env: str = "OPENAI_API_KEY"
+    openai_timeout_seconds: float = 20.0
+    min_confidence: float = 0.58
+    show_question: bool = False
+    compact_popup: bool = True
+    internet_enabled: bool = True
 
 
 class ConfigStore:
@@ -53,6 +62,7 @@ class ConfigStore:
         payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         capture = CaptureSettings(**payload.get("capture", {}))
         merged = {**asdict(AppConfig()), **payload, "capture": capture}
+        merged["min_confidence"] = clamp(float(merged.get("min_confidence", 0.58)))
         self._config = AppConfig(**merged)
         return self._config
 
@@ -61,6 +71,8 @@ class ConfigStore:
         for key, value in changes.items():
             if key == "capture" and isinstance(value, dict):
                 data[key] = CaptureSettings(**value)
+            elif key == "min_confidence":
+                data[key] = clamp(float(value))
             else:
                 data[key] = value
         self._config = AppConfig(**data)

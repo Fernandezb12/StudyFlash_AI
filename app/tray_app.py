@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QStyle
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from app.config import ConfigStore
 from app.controller import StudyFlashController
@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class StudyFlashTrayApp(QObject):
+    capture_requested = Signal()
+
     def __init__(
         self,
         qt_app: QApplication,
@@ -37,6 +39,7 @@ class StudyFlashTrayApp(QObject):
         self.settings_window: SettingsWindow | None = None
         self.toggle_hotkey_action: QAction | None = None
         self.startup_action: QAction | None = None
+        self.capture_requested.connect(self._safe_process_capture)
         self._build_menu()
         self.tray_icon.setContextMenu(self.menu)
         self.tray_icon.activated.connect(self._handle_activation)
@@ -53,7 +56,7 @@ class StudyFlashTrayApp(QObject):
     def _load_icon(self) -> QIcon:
         icon = QIcon(resource_path("assets", "icon.png"))
         if icon.isNull():
-            icon = self.qt_app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+            icon = self.qt_app.style().standardIcon(self.qt_app.style().SP_ComputerIcon)
         return icon
 
     def _build_menu(self) -> None:
@@ -64,7 +67,7 @@ class StudyFlashTrayApp(QObject):
         self.toggle_hotkey_action.triggered.connect(self.toggle_hotkey)
 
         test_ocr = QAction("Ejecutar prueba OCR", self)
-        test_ocr.triggered.connect(self._safe_process_capture)
+        test_ocr.triggered.connect(self.capture_requested.emit)
 
         show_history = QAction("Ver historial reciente", self)
         show_history.triggered.connect(self.show_history)
@@ -97,10 +100,13 @@ class StudyFlashTrayApp(QObject):
             logger.exception("Capture workflow failed")
             self.notify("StudyFlash AI", f"No se pudo procesar la captura: {exc}")
 
+    def _request_capture_from_hotkey(self) -> None:
+        self.capture_requested.emit()
+
     def _sync_hotkey(self) -> None:
         config = self.controller.config
         if config.hotkey_enabled:
-            self.hotkeys.register(config.hotkey, self._safe_process_capture)
+            self.hotkeys.register(config.hotkey, self._request_capture_from_hotkey)
             if self.toggle_hotkey_action:
                 self.toggle_hotkey_action.setText("Desactivar hotkey")
         else:
